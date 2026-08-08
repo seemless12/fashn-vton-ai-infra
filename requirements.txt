@@ -1,0 +1,25 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+pillow>=10.0
+numpy>=1.24
+fashn-human-parser
+
+# Pinned deliberately: fashn_vton's DWPose pose-detector depends on
+# onnxruntime, and installing it *after* onnxruntime-gpu (which some
+# environments pull in transitively) causes:
+#   ImportError: libcudart.so.13: cannot open shared object file
+# on Colab, because the GPU build expects a CUDA runtime version that
+# isn't present. Pose-keypoint extraction on a single image is cheap
+# enough that CPU-only onnxruntime has no meaningful impact on latency
+# -- the diffusion pass on GPU (via torch) is the actual bottleneck.
+onnxruntime>=1.17,<2.0
+
+# Required by refiner.py's optional detail-refine pass (SD1.5 inpainting +
+# IP-Adapter). Only loaded/used when a request sets refine=True, but needs
+# to be installed regardless since engine.py imports from refiner.py
+# unconditionally at module load time.
+diffusers>=0.27
+accelerate>=0.28
+
+# fashn_vton is not on PyPI -- install from GitHub, see README.md

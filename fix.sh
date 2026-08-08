@@ -1,0 +1,1 @@
+sudo mv /home/ubuntu/*.py /opt/fashn-vton/; sudo mv /home/ubuntu/requirements.txt /opt/fashn-vton/; sudo -H -u root bash -c 'source /opt/fashn-vton/venv/bin/activate && pip install fashn_vton@git+https://github.com/fashn-AI/fashn-vton-1.5.git'; sudo systemctl restart fashn-vton

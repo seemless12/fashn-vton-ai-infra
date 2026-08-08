@@ -1,0 +1,25 @@
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+
+# Install system dependencies for OpenCV and other Python packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install redis
+
+# Copy engine and worker
+COPY engine.py .
+COPY refiner.py .
+COPY image_utils.py .
+COPY worker.py .
+
+# Assuming weights are mounted to /weights or downloaded at runtime
+ENV FASHN_WEIGHTS_DIR=/weights
+
+CMD ["python", "-u", "worker.py"]

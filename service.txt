@@ -1,0 +1,13 @@
+[Unit]
+Description=FASHN VTON Service
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/fashn-vton
+Environment=PATH=/opt/fashn-vton/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/opt/fashn-vton/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
