@@ -39,6 +39,7 @@ fi
 # ---- 3. Create App Directory & Virtual Environment ----
 mkdir -p "$APP_DIR"
 mkdir -p "$APP_DIR/weights"
+mkdir -p "$APP_DIR/static"
 
 python3 -m venv "$VENV_DIR"
 source "$VENV_DIR/bin/activate"

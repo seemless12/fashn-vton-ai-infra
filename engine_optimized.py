@@ -78,13 +78,6 @@ class VTONEngine:
         torch.backends.cudnn.allow_tf32 = True
         torch.backends.cudnn.benchmark = True
 
-        # --- Enable SDPA (Scaled Dot Product Attention) ---
-        # PyTorch 2.x native efficient attention, replaces xformers
-        torch.backends.cuda.enable_flash_sdp(True)
-        torch.backends.cuda.enable_mem_efficient_sdp(True)
-        torch.backends.cuda.enable_math_sdp(False)  # Disable slow fallback
-        logger.info("Enabled PyTorch native SDPA (Flash Attention + Memory Efficient)")
-
         self.is_ampere_plus = False
         if torch.cuda.is_available():
             major, minor = torch.cuda.get_device_capability(0)
@@ -93,13 +86,28 @@ class VTONEngine:
                 "GPU: %s (compute capability %s.%s) -- %s",
                 torch.cuda.get_device_name(0),
                 major, minor,
-                "Ampere+ bf16 tensor cores available" if self.is_ampere_plus else "pre-Ampere",
+                "Ampere+ bf16 tensor cores available" if self.is_ampere_plus else "pre-Ampere (Turing T4 / sm_75)",
             )
 
-        self.force_fp16 = (
-            not self.is_ampere_plus
-            and os.environ.get("FASHN_FORCE_FP16", "0") == "1"
+        # --- Enable SDPA (Scaled Dot Product Attention) ---
+        # FlashAttention strictly requires Ampere+ (sm_80+).
+        # On Tesla T4 (Turing, sm_75), Flash is unsupported and MUST be False.
+        # Memory-Efficient Attention (Cutlass) is supported on sm_75.
+        # Math Attention MUST be True so PyTorch can fall back whenever Cutlass constraints are not met!
+        torch.backends.cuda.enable_flash_sdp(self.is_ampere_plus)
+        torch.backends.cuda.enable_mem_efficient_sdp(True)
+        torch.backends.cuda.enable_math_sdp(True)
+        logger.info(
+            "Configured PyTorch SDPA: Flash=%s, MemEfficient=True, Math=True",
+            self.is_ampere_plus,
         )
+
+        # Default force_fp16 to True on pre-Ampere GPUs (like T4) for memory & speed, or via env
+        self.force_fp16 = (
+            os.environ.get("FASHN_FORCE_FP16", "1" if not self.is_ampere_plus else "0") == "1"
+        )
+        if self.force_fp16:
+            logger.info("FP16 autocast enabled (optimal for Tesla T4 Tensor Cores)")
 
         logger.info("Loading FASHN VTON pipeline from %s ...", weights_dir)
         self._weights_dir = weights_dir
@@ -107,7 +115,7 @@ class VTONEngine:
         self.pipeline = TryOnPipeline(weights_dir=weights_dir, device=device)
 
         # --- FIX #2: Apply Channels Last memory format ---
-        # This improves Tensor Core utilization on Ampere GPUs
+        # This improves Tensor Core utilization on modern NVIDIA GPUs
         if hasattr(self.pipeline, "tryon_model"):
             try:
                 self.pipeline.tryon_model = self.pipeline.tryon_model.to(
@@ -117,46 +125,47 @@ class VTONEngine:
             except Exception as e:
                 logger.warning(f"Could not apply channels_last: {e}")
 
-        # --- FIX #3: torch.compile on the CORRECT attribute ---
-        # The attribute is `tryon_model`, NOT `transformer`
-        if hasattr(self.pipeline, "tryon_model"):
+        # --- FIX #3: torch.compile ---
+        # Disabled by default on pre-Ampere (T4) to avoid CUDA Graph conflicts and slow compilation
+        enable_compile = os.environ.get("FASHN_ENABLE_COMPILE", "0") == "1"
+        if enable_compile and hasattr(self.pipeline, "tryon_model"):
             try:
+                compile_mode = "default" if not self.is_ampere_plus else "reduce-overhead"
                 self.pipeline.tryon_model = torch.compile(
                     self.pipeline.tryon_model,
-                    mode="reduce-overhead",
-                    fullgraph=False  # fullgraph=True may fail on complex models
+                    mode=compile_mode,
+                    fullgraph=False
                 )
-                logger.info("torch.compile enabled on tryon_model (mode=reduce-overhead)")
+                logger.info(f"torch.compile enabled on tryon_model (mode={compile_mode})")
             except Exception as e:
                 logger.warning(f"Could not torch.compile tryon_model: {e}")
         else:
-            logger.warning("tryon_model attribute not found on pipeline, torch.compile skipped")
+            logger.info("torch.compile disabled (optimal for stable eager SDPA inference)")
 
         logger.info("Loading FASHN Human Parser ...")
         self.parser = FashnHumanParser()
         self.refiner = DetailRefiner(device=device or "cuda")
 
         # --- FIX #5: Warmup pass at init ---
-        logger.info("Running warmup inference pass (torch.compile graph capture)...")
+        logger.info("Running warmup inference pass...")
         warmup_start = time.time()
         try:
             dummy_person = Image.new('RGB', (768, 1024), color='white')
             dummy_garment = Image.new('RGB', (768, 1024), color='red')
-            with torch.inference_mode():
-                self.pipeline(
-                    person_image=dummy_person,
-                    garment_image=dummy_garment,
-                    category="tops",
-                    garment_photo_type="model",
-                    num_samples=1,
-                    num_timesteps=5,  # Minimal steps for warmup
-                    guidance_scale=1.5,
-                    seed=42,
-                    segmentation_free=True,
-                )
-            torch.cuda.synchronize()
-            logger.info(f"Warmup completed in {time.time() - warmup_start:.1f}s. "
-                        f"First real request will be fast.")
+            self._call_pipeline(
+                person_image=dummy_person,
+                garment_image=dummy_garment,
+                category="tops",
+                garment_photo_type="model",
+                num_samples=1,
+                num_timesteps=5,  # Minimal steps for warmup
+                guidance_scale=1.5,
+                seed=42,
+                segmentation_free=True,
+            )
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            logger.info(f"Warmup completed in {time.time() - warmup_start:.1f}s. Engine ready.")
         except Exception as e:
             logger.warning(f"Warmup pass failed (non-critical): {e}")
 

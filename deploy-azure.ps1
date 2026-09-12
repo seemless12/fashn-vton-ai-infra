@@ -90,6 +90,11 @@ switch ($Action) {
             }
         }
 
+        $staticDir = Join-Path $ScriptDir "static"
+        if (Test-Path $staticDir) {
+            scp -r -o StrictHostKeyChecking=no -i $KeyPath $staticDir "azureuser@${ip}:/opt/fashn-vton/"
+        }
+
         Write-Host "`nRestarting fashn-vton systemd service..." -ForegroundColor Yellow
         ssh -o StrictHostKeyChecking=no -i $KeyPath "azureuser@${ip}" "sudo systemctl restart fashn-vton"
 
