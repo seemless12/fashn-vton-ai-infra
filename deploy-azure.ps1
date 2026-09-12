@@ -13,7 +13,7 @@ param (
     [ValidateSet("provision", "deploy-code", "start", "stop", "status", "health", "destroy")]
     [string]$Action = "status",
 
-    [string]$Region = "centralindia",
+    [string]$Region = "eastasia",
     [string]$VmSize = "Standard_NC4as_T4_v3"
 )
 

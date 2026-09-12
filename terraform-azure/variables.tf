@@ -1,7 +1,7 @@
 variable "azure_region" {
-  description = "Azure region for resources. centralindia (Pune) has low latency to PK/IN, or use eastus"
+  description = "Azure region for resources. eastasia (Hong Kong) has approved GPU quota and low latency"
   type        = string
-  default     = "centralindia"
+  default     = "eastasia"
 }
 
 variable "project_name" {
