@@ -2,8 +2,8 @@ import requests
 import time
 import os
 
-API_URL = "http://65.0.180.137:8000/api/try-on"
-POLL_URL = "http://65.0.180.137:8000"
+API_URL = "http://52.66.205.255:8000/api/try-on"
+POLL_URL = "http://52.66.205.255:8000/api/try-on/"
 
 def test_inference(test_name, steps=15):
     print(f"\n--- Starting {test_name} ---")

@@ -30,7 +30,8 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
-from engine import TryOnRequest, VTONEngine
+from engine_optimized import TryOnRequest, VTONEngine
+import license_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vton_server")
@@ -126,6 +127,28 @@ def health():
     return {"status": "ok", "model_loaded": _engine is not None}
 
 
+@app.get("/api/credits/check")
+def check_credits(device_id: str, license_key: Optional[str] = None):
+    """
+    Returns remaining quota and plan info for the given device or license key.
+    """
+    return license_manager.check_credits(device_id, license_key)
+
+
+@app.post("/api/license/activate")
+async def activate_license(
+    device_id: str = Form(...),
+    license_key: str = Form(...),
+):
+    """
+    Validates and activates a PKR 500 license key for the user.
+    """
+    status = license_manager.check_credits(device_id, license_key)
+    if not status.get("valid"):
+        raise HTTPException(status_code=400, detail=status.get("error", "Invalid or expired license key."))
+    return status
+
+
 @app.post("/tryon")
 async def tryon(
     # NOTE: this endpoint blocks for the full duration of generation. If
@@ -172,7 +195,7 @@ async def tryon(
         garment_photo_type=garment_photo_type,
         mode=mode,
         num_samples=num_samples,
-        steps=steps,
+        num_timesteps=steps,
         guidance_scale=guidance_scale,
         seed=seed,
         autocrop=autocrop,
@@ -230,7 +253,7 @@ def _run_job(job_id: str, req: TryOnRequest):
                         "dominant_class": result.dominant_class,
                         "candidates_tried": result.candidates_tried,
                         "refined": result.refined,
-                        "steps": req.steps,
+                        "steps": req.num_timesteps,
                         "generation_time": round(time.time() - _jobs[job_id]["started_at"], 2),
                     },
                 }
@@ -262,6 +285,8 @@ async def submit_tryon(
     refine_strength: float = Form(0.25),
     refine_guidance_scale: float = Form(3.0),
     refine_steps: int = Form(25),
+    device_id: str = Form("default_dev"),
+    license_key: Optional[str] = Form(None),
 ):
     """
     Enqueue a try-on job and return immediately with a job_id + poll_endpoint.
@@ -269,6 +294,21 @@ async def submit_tryon(
     with request timeouts shorter than generation time -- pair it with
     GET /api/try-on/status/{job_id}.
     """
+    # Enforce subscription / trial credit quota
+    quota = license_manager.check_credits(device_id, license_key)
+    if not quota.get("valid") or quota.get("credits_remaining", 0) <= 0:
+        raise HTTPException(
+            status_code=402,
+            detail="Credit limit reached. Please upgrade to the PKR 500 pack (100 try-ons) to continue."
+        )
+
+    # Deduct 1 credit before queueing
+    if not license_manager.deduct_credit(device_id, license_key):
+        raise HTTPException(
+            status_code=402,
+            detail="Credit deduction failed. Quota may be exhausted."
+        )
+
     if not REDIS_MODE and _engine is None:
         raise HTTPException(status_code=503, detail="Model still loading, try again shortly.")
 
@@ -322,8 +362,8 @@ async def submit_tryon(
             category=category,
             garment_photo_type=garment_photo_type,
             mode=mode,
-            num_samples=num_samples,
-            steps=steps,
+            num_samples=1,
+            num_timesteps=steps,
             guidance_scale=guidance_scale,
             seed=seed,
             autocrop=autocrop,
@@ -464,7 +504,7 @@ async def tryon_debug(
         garment_photo_type=garment_photo_type,
         mode=mode,
         num_samples=num_samples,
-        steps=steps,
+        num_timesteps=steps,
         guidance_scale=guidance_scale,
         seed=seed,
         autocrop=autocrop,

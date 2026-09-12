@@ -132,6 +132,7 @@ resource "aws_instance" "fashn_vton" {
     delete_on_termination = true
   }
 
+
   user_data = file("${path.module}/startup.sh")
 
   tags = {

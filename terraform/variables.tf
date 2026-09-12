@@ -19,7 +19,7 @@ variable "ebs_volume_size" {
 variable "key_name" {
   description = "Name for the SSH key pair"
   type        = string
-  default     = "fashn-vton-key"
+  default     = "fashn-vton-key-v2"
 }
 
 variable "app_port" {
@@ -31,5 +31,5 @@ variable "app_port" {
 variable "project_name" {
   description = "Project name used for tagging resources"
   type        = string
-  default     = "fashn-vton"
+  default     = "fashn-vton-v2"
 }
