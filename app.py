@@ -231,13 +231,23 @@ async def tryon(
     return StreamingResponse(buf, media_type="image/png", headers=headers)
 
 
+def _touch_watchdog():
+    try:
+        with open("/tmp/last_fashn_job", "w") as f:
+            f.write(str(time.time()))
+    except Exception:
+        pass
+
+
 def _run_job(job_id: str, req: TryOnRequest):
+    _touch_watchdog()
     with _jobs_lock:
         _jobs[job_id]["status"] = "processing"
         _jobs[job_id]["started_at"] = time.time()
 
     try:
         result = _engine.run(req)
+        _touch_watchdog()
         buf = io.BytesIO()
         result.image.save(buf, format="PNG")
         with _jobs_lock:

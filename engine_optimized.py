@@ -206,11 +206,7 @@ class VTONEngine:
             plan = [loose_hint]
         else:
             loose = extent_ratio >= LOOSE_EXTENT_THRESHOLD
-            near_boundary = abs(extent_ratio - LOOSE_EXTENT_THRESHOLD) <= BORDERLINE_BAND
-            if near_boundary:
-                plan = [True, False]
-            else:
-                plan = [loose]
+            plan = [loose]
 
         candidates = []
         for seg_free in plan:
