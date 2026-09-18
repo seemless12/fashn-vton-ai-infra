@@ -72,6 +72,7 @@ class TryOnRequest:
     mode: str = "auto"                       # "auto" | "masked" | "maskless" | "both"
     num_samples: int = 1
     steps: int = 15
+    num_timesteps: Optional[int] = None
     guidance_scale: float = 1.5
     seed: int = 42
     autocrop: bool = True
@@ -83,6 +84,12 @@ class TryOnRequest:
     refine_strength: float = 0.25
     refine_guidance_scale: float = 3.0
     refine_steps: int = 25
+
+    def __post_init__(self):
+        if self.num_timesteps is not None:
+            self.steps = self.num_timesteps
+        else:
+            self.num_timesteps = self.steps
 
 
 @dataclass

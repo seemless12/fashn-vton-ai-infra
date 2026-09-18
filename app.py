@@ -249,7 +249,10 @@ def _run_job(job_id: str, req: TryOnRequest):
         result = _engine.run(req)
         _touch_watchdog()
         buf = io.BytesIO()
-        result.image.save(buf, format="PNG")
+        out_img = result.image
+        if out_img.mode != "RGB":
+            out_img = out_img.convert("RGB")
+        out_img.save(buf, format="JPEG", quality=92)
         with _jobs_lock:
             _jobs[job_id].update(
                 {
@@ -287,7 +290,7 @@ async def submit_tryon(
     garment_photo_type: str = Form("model"),
     mode: str = Form("auto"),
     num_samples: int = Form(1),
-    steps: int = Form(15, ge=10, le=50),
+    steps: int = Form(15, ge=8, le=50),
     guidance_scale: float = Form(1.5),
     seed: int = Form(42),
     autocrop: bool = Form(True),
@@ -461,17 +464,18 @@ def poll_tryon(job_id: str):
             with _jobs_lock:
                 _jobs.pop(job_id, None)  # one-shot fetch, free the memory
                 
-            # Save image to static folder
+            # Save image to static folder (both .jpg and .png for full compatibility)
             os.makedirs("static", exist_ok=True)
-            image_path = f"static/{job_id}.png"
-            with open(image_path, "wb") as f:
+            with open(f"static/{job_id}.jpg", "wb") as f:
+                f.write(image_bytes)
+            with open(f"static/{job_id}.png", "wb") as f:
                 f.write(image_bytes)
                 
             return JSONResponse({
                 "status": "completed",
                 "steps": meta.get("steps", 15),
                 "generation_time": meta.get("generation_time", 0.0),
-                "image_url": f"/static/{job_id}.png"
+                "image_url": f"/static/{job_id}.jpg"
             })
 
         if status == "failed":
