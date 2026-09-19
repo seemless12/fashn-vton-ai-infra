@@ -290,7 +290,7 @@ async def submit_tryon(
     garment_photo_type: str = Form("model"),
     mode: str = Form("auto"),
     num_samples: int = Form(1),
-    steps: int = Form(15, ge=8, le=50),
+    steps: int = Form(15, ge=4, le=50),
     guidance_scale: float = Form(1.5),
     seed: int = Form(42),
     autocrop: bool = Form(True),
